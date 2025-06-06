@@ -37,14 +37,14 @@ from typing import Dict, List
 from domdf_python_tools.paths import PathPlus
 from influxdb_client import InfluxDBClient
 
+# this package
+from statistics_backend.backend import Backend
+
 __all__ = ["EnergyBackend"]
 
 
-class EnergyBackend:
-	token: str
+class EnergyBackend(Backend):
 	voltage_source: str
-	influxdb_address: str
-	output_data_file: str
 	cache_data_file: str
 
 	def __init__(
@@ -55,10 +55,8 @@ class EnergyBackend:
 			output_data_file: str = "daily_energy.json",
 			cache_data_file: str = "daily_energy_cache.json",
 			) -> None:
-		self.token = token
+		super().__init__(token, output_data_file=output_data_file, influxdb_address=influxdb_address)
 		self.voltage_source = voltage_source
-		self.influxdb_address = influxdb_address
-		self.output_data_file = output_data_file
 		self.cache_data_file = cache_data_file
 
 	def update_data(self) -> None:
@@ -133,15 +131,6 @@ class EnergyBackend:
 
 		PathPlus(self.cache_data_file).dump_json(output_data)
 		json_datafile.dump_json(save_data)
-
-	def get_data(self) -> Dict:  # TODO: KT,VT
-
-		json_datafile = PathPlus(self.cache_data_file)
-		energy_data = json_datafile.load_json()  # List
-		for day in energy_data:
-			day["date"] = date.fromisoformat(day["date"])
-
-		return energy_data
 
 	def get_daily_endpoint_data(self) -> List:  # TODO: KT
 		output_data = []

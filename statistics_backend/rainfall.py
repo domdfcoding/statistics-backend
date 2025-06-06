@@ -38,15 +38,15 @@ from typing import Dict, List
 from domdf_python_tools.paths import PathPlus
 from influxdb_client import InfluxDBClient
 
+# this package
+from statistics_backend.backend import Backend
+
 __all__ = ["RainfallBackend"]
 
 mins_15 = timedelta(minutes=15)
 
 
-class RainfallBackend:
-	token: str
-	influxdb_address: str
-	output_data_file: str
+class RainfallBackend(Backend):
 	cache_data_file: str
 
 	def __init__(
@@ -56,9 +56,7 @@ class RainfallBackend:
 			output_data_file: str = "daily_rainfall.json",
 			cache_data_file: str = "daily_rainfall_cache.json",
 			) -> None:
-		self.token = token
-		self.influxdb_address = influxdb_address
-		self.output_data_file = output_data_file
+		super().__init__(token, output_data_file=output_data_file, influxdb_address=influxdb_address)
 		self.cache_data_file = cache_data_file
 
 	def update_data(self) -> None:
@@ -117,15 +115,6 @@ class RainfallBackend:
 
 		PathPlus(self.cache_data_file).dump_json(output_data)
 		json_datafile.dump_json(save_data)
-
-	def get_data(self) -> Dict:  # TODO: KT,VT
-
-		json_datafile = PathPlus(self.cache_data_file)
-		rainfall_data = json_datafile.load_json()  # List
-		for day in rainfall_data:
-			day["date"] = date.fromisoformat(day["date"])
-
-		return rainfall_data
 
 	def get_daily_endpoint_data(self) -> List:  # TODO: KT
 		output_data = []

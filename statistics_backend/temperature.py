@@ -39,27 +39,27 @@ from astral.sun import sun
 from domdf_python_tools.paths import PathPlus
 from influxdb_client import InfluxDBClient
 
+# this package
+from statistics_backend.backend import Backend
+
 __all__ = ["TemperatureBackend"]
 
 
-class TemperatureBackend:
-	token: str
+class TemperatureBackend(Backend):
 	temperature_source: str
-	influxdb_address: str
-	output_data_file: str
-	cache_data_file: str
+	city: LocationInfo
 
 	def __init__(
 			self,
 			token: str,
 			temperature_source: str,
+			city: LocationInfo,
 			influxdb_address: str = "http://localhost:8086",
 			output_data_file: str = "daily_temperatures.json",
 			) -> None:
-		self.token = token
+		super().__init__(token, output_data_file=output_data_file, influxdb_address=influxdb_address)
 		self.temperature_source = temperature_source
-		self.influxdb_address = influxdb_address
-		self.output_data_file = output_data_file
+		self.city = city
 
 	def update_data(self) -> None:
 
@@ -77,8 +77,6 @@ class TemperatureBackend:
 			temperature_data = {}
 
 		today = date.today().isoformat()
-
-		city = LocationInfo("Stoke-on-Trent", "England", "Europe/London", 53.0342901, -2.1630222)
 
 		with InfluxDBClient(
 				url=self.influxdb_address,
@@ -107,7 +105,7 @@ class TemperatureBackend:
 				data.append((x.values.get("_time"), x.values.get("_value")))
 
 		for day, daily_data in groupby(data, lambda d: d[0].date()):
-			s = sun(city.observer, date=day)
+			s = sun(self.city.observer, date=day)
 			sunrise = s["sunrise"]
 			sunset = s["sunset"]
 
