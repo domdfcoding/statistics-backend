@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 #
-#  energy_utils.py
+#  energy.py
 """
-Utilities for processing electricity consumption data.
+Backend for processing electricity consumption data.
 """
 #
 #  Copyright © 2023-2025 Dominic Davis-Foster <dominic@davis-foster.co.uk>
@@ -35,7 +35,6 @@ from typing import Dict, List
 
 # 3rd party
 from domdf_python_tools.paths import PathPlus
-from influxdb_client import InfluxDBClient
 
 # this package
 from statistics_backend.backend import Backend
@@ -44,8 +43,17 @@ __all__ = ["EnergyBackend"]
 
 
 class EnergyBackend(Backend):
+	"""
+	Backend for processing energy data.
+
+	:param token: Token for InfluxDB
+	:param voltage_source: MQTT device providing mains line voltage data.
+	:param influxdb_address: Address of the InfluxDB server.
+	:param output_data_file: File to write processed data to on disk.
+	:param cache_data_file:
+	"""
+
 	voltage_source: str
-	cache_data_file: str
 
 	def __init__(
 			self,
@@ -55,11 +63,18 @@ class EnergyBackend(Backend):
 			output_data_file: str = "daily_energy.json",
 			cache_data_file: str = "daily_energy_cache.json",
 			) -> None:
-		super().__init__(token, output_data_file=output_data_file, influxdb_address=influxdb_address)
+		super().__init__(
+				token,
+				output_data_file=output_data_file,
+				cache_data_file=cache_data_file,
+				influxdb_address=influxdb_address
+				)
 		self.voltage_source = voltage_source
-		self.cache_data_file = cache_data_file
 
 	def update_data(self) -> None:
+		"""
+		Refresh processed data on disk.
+		"""
 
 		json_datafile = PathPlus(self.output_data_file)
 		if json_datafile.is_file():
@@ -74,12 +89,7 @@ class EnergyBackend(Backend):
 
 		today = date.today()
 
-		with InfluxDBClient(
-				url=self.influxdb_address,
-				token=self.token,
-				org="Home",
-				timeout=60_000,
-				) as client:
+		with self.influxdb_client() as client:
 
 			query = f"""
 		import "interpolate"
@@ -133,6 +143,10 @@ class EnergyBackend(Backend):
 		json_datafile.dump_json(save_data)
 
 	def get_daily_endpoint_data(self) -> List:  # TODO: KT
+		"""
+		Returns processed data for the daily energy consumption endpoint.
+		"""
+
 		output_data = []
 		for daily_data in self.get_data():
 			prepared_data = {"date": daily_data["date"], "consumption": daily_data["consumption"]}
@@ -140,7 +154,11 @@ class EnergyBackend(Backend):
 
 		return list(reversed(output_data))
 
-	def get_monthly_endpoint_data(self) -> List:  # TODO: KT
+	def get_monthly_endpoint_data(self) -> Dict:  # TODO: KT,VT
+		"""
+		Returns processed data for the monthly energy consumption endpoint.
+		"""
+
 		monthly_energy = {}
 		today = date.today()
 

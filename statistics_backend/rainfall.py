@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 #
-#  rainfall_utils.py
+#  rainfall.py
 """
-Utilities for processing rainfall data.
+Backend for processing rainfall data.
 """
 #
 #  Copyright © 2023 Dominic Davis-Foster <dominic@davis-foster.co.uk>
@@ -29,14 +29,12 @@ Utilities for processing rainfall data.
 # stdlib
 import itertools
 import operator
-import os
 from calendar import monthrange
 from datetime import date, timedelta
 from typing import Dict, List
 
 # 3rd party
 from domdf_python_tools.paths import PathPlus
-from influxdb_client import InfluxDBClient
 
 # this package
 from statistics_backend.backend import Backend
@@ -47,7 +45,14 @@ mins_15 = timedelta(minutes=15)
 
 
 class RainfallBackend(Backend):
-	cache_data_file: str
+	"""
+	Backend for processing rainfall data.
+
+	:param token: Token for InfluxDB
+	:param influxdb_address: Address of the InfluxDB server.
+	:param output_data_file: File to write processed data to on disk.
+	:param cache_data_file:
+	"""
 
 	def __init__(
 			self,
@@ -56,10 +61,17 @@ class RainfallBackend(Backend):
 			output_data_file: str = "daily_rainfall.json",
 			cache_data_file: str = "daily_rainfall_cache.json",
 			) -> None:
-		super().__init__(token, output_data_file=output_data_file, influxdb_address=influxdb_address)
-		self.cache_data_file = cache_data_file
+		super().__init__(
+				token,
+				output_data_file=output_data_file,
+				cache_data_file=cache_data_file,
+				influxdb_address=influxdb_address
+				)
 
 	def update_data(self) -> None:
+		"""
+		Refresh processed data on disk.
+		"""
 
 		json_datafile = PathPlus(self.output_data_file)
 		if json_datafile.is_file():
@@ -74,12 +86,7 @@ class RainfallBackend(Backend):
 
 		today = date.today()
 
-		with InfluxDBClient(
-				url=self.influxdb_address,
-				token=self.token,
-				org="Home",
-				timeout=60_000,
-				) as client:
+		with self.influxdb_client() as client:
 
 			query = f"""
 		import "math"
@@ -117,6 +124,10 @@ class RainfallBackend(Backend):
 		json_datafile.dump_json(save_data)
 
 	def get_daily_endpoint_data(self) -> List:  # TODO: KT
+		"""
+		Returns processed data for the daily rainfall endpoint.
+		"""
+
 		output_data = []
 		for daily_data in self.get_data():
 			prepared_data = {"date": daily_data["date"], "rainfall_mm": daily_data["rainfall_mm"]}
@@ -125,10 +136,12 @@ class RainfallBackend(Backend):
 		return list(reversed(output_data))
 
 	def get_monthly_endpoint_data(self) -> Dict:  # TODO: KT,VT
+		"""
+		Returns processed data for the monthly rainfall endpoint.
+		"""
+
 		monthly_rainfall = {}
-
 		today = date.today()
-
 
 		for (year, month), daily_data in itertools.groupby(self.get_data(), lambda x: (x["date"].year, x["date"].month)):
 			daily_rainfall_list = list(map(operator.itemgetter("rainfall_mm"), daily_data))
@@ -159,9 +172,13 @@ class RainfallBackend(Backend):
 						"complete_month": False,
 						}
 
-			return monthly_rainfall
+		return monthly_rainfall
 
 	def get_yearly_endpoint_data(self) -> Dict:  # TODO: KT,VT
+		"""
+		Returns processed data for the annual rainfall endpoint.
+		"""
+
 		monthly_rainfall = self.get_monthly_endpoint_data()
 		yearly_rainfall = {}
 

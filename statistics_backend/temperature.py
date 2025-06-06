@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 #
-#  temperature_utils.py
+#  temperature.py
 """
-Utilities for processing temperature data.
+Backend for processing temperature data.
 """
 #
 #  Copyright © 2023 Dominic Davis-Foster <dominic@davis-foster.co.uk>
@@ -27,7 +27,6 @@ Utilities for processing temperature data.
 #
 
 # stdlib
-import os
 from datetime import date, datetime, timedelta
 from itertools import groupby
 from statistics import mean
@@ -37,7 +36,6 @@ from typing import Dict
 from astral import LocationInfo
 from astral.sun import sun
 from domdf_python_tools.paths import PathPlus
-from influxdb_client import InfluxDBClient
 
 # this package
 from statistics_backend.backend import Backend
@@ -46,6 +44,16 @@ __all__ = ["TemperatureBackend"]
 
 
 class TemperatureBackend(Backend):
+	"""
+	Backend for processing temperature data.
+
+	:param token: Token for InfluxDB
+	:param temperature_source: MQTT name of the device providing temperature data.
+	:param city: The city to calculate sunrise and sunset times for.
+	:param influxdb_address: Address of the InfluxDB server.
+	:param output_data_file: File to write processed data to on disk.
+	"""
+
 	temperature_source: str
 	city: LocationInfo
 
@@ -62,6 +70,9 @@ class TemperatureBackend(Backend):
 		self.city = city
 
 	def update_data(self) -> None:
+		"""
+		Refresh processed data on disk.
+		"""
 
 		latest_date = date(year=2022, month=7, day=1)
 
@@ -78,12 +89,7 @@ class TemperatureBackend(Backend):
 
 		today = date.today().isoformat()
 
-		with InfluxDBClient(
-				url=self.influxdb_address,
-				token=self.token,
-				org="Home",
-				timeout=60_000,
-				) as client:
+		with self.influxdb_client() as client:
 
 			query = f"""
 		import "math"
@@ -151,10 +157,17 @@ class TemperatureBackend(Backend):
 		json_datafile.dump_json(output_data)
 
 	def get_data(self) -> Dict:  # TODO: KT,VT
+		"""
+		Returns the processed data from disk.
+		"""
+
 		json_datafile = PathPlus(self.output_data_file)
 		return json_datafile.load_json()  # List
 
 	def get_daily_endpoint_data(self) -> Dict:  # TODO: KT,VT
+		"""
+		Returns processed data for the daily min/max temperatures endpoint.
+		"""
 
 		min_max_data = {}
 
