@@ -31,6 +31,13 @@ license-key = "MIT"
 package = "statistics_backend"
 
 [tool.importcheck]
+always = [
+    "statistics_backend.__init__",
+    "statistics_backend.backend",
+    "statistics_backend.energy",
+    "statistics_backend.rainfall",
+    "statistics_backend.temperature",
+]
 
 [tool.mypy]
 python_version = "3.8"
