@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 #
-#  energy_utils.py
+#  rainfall_utils.py
 """
-Utilities for processing electricity consumption data.
+Utilities for processing rainfall data.
 """
 #
-#  Copyright © 2023-2025 Dominic Davis-Foster <dominic@davis-foster.co.uk>
+#  Copyright © 2023 Dominic Davis-Foster <dominic@davis-foster.co.uk>
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a copy
 #  of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +29,7 @@ Utilities for processing electricity consumption data.
 # stdlib
 import itertools
 import operator
+import os
 from calendar import monthrange
 from datetime import date, timedelta
 from typing import Dict, List
@@ -37,12 +38,13 @@ from typing import Dict, List
 from domdf_python_tools.paths import PathPlus
 from influxdb_client import InfluxDBClient
 
-__all__ = ["EnergyBackend"]
+__all__ = ["RainfallBackend"]
+
+mins_15 = timedelta(minutes=15)
 
 
-class EnergyBackend:
+class RainfallBackend:
 	token: str
-	voltage_source: str
 	influxdb_address: str
 	output_data_file: str
 	cache_data_file: str
@@ -50,13 +52,11 @@ class EnergyBackend:
 	def __init__(
 			self,
 			token: str,
-			voltage_source: str,
 			influxdb_address: str = "http://localhost:8086",
-			output_data_file: str = "daily_energy.json",
-			cache_data_file: str = "daily_energy_cache.json",
+			output_data_file: str = "daily_rainfall.json",
+			cache_data_file: str = "daily_rainfall_cache.json",
 			) -> None:
 		self.token = token
-		self.voltage_source = voltage_source
 		self.influxdb_address = influxdb_address
 		self.output_data_file = output_data_file
 		self.cache_data_file = cache_data_file
@@ -65,13 +65,13 @@ class EnergyBackend:
 
 		json_datafile = PathPlus(self.output_data_file)
 		if json_datafile.is_file():
-			consumption_data = json_datafile.load_json()  # List
-			for day in consumption_data:
+			rainfall_data = json_datafile.load_json()  # List
+			for day in rainfall_data:
 				day["date"] = date.fromisoformat(day["date"])
-			latest_date = consumption_data[-1]["date"]
+			latest_date = rainfall_data[-1]["date"]
 
 		else:
-			consumption_data = []
+			rainfall_data = []
 			latest_date = date(year=2022, month=8, day=1)
 
 		today = date.today()
@@ -84,30 +84,15 @@ class EnergyBackend:
 				) as client:
 
 			query = f"""
-		import "interpolate"
+		import "math"
 		import "date"
 
-		current = from(bucket: "telegraf")
+		from(bucket: "telegraf")
 		|> range(start: date.truncate(t: {(latest_date+timedelta(days=1)).isoformat()}T00:00:00Z, unit: 1d), stop: now())
-		|> filter(fn: (r) => r["topic"] == "CT_CLAMP/tele/SENSOR")
-		|> filter(fn: (r) => r["_field"] == "Current")
-		|> aggregateWindow(every: 1h, fn: mean)
-
-		voltage = from(bucket: "telegraf")
-		|> range(start: date.truncate(t: {(latest_date+timedelta(days=1)).isoformat()}T00:00:00Z, unit: 1d), stop: now())
-		|> filter(fn: (r) => r["topic"] == "{self.voltage_source}/tele/SENSOR")
-		|> filter(fn: (r) => r["_field"] == "ENERGY_Voltage")
-		|> aggregateWindow(every: 1h, fn: mean)
-
-		join(
-			tables: {{voltage:voltage, current:current}},
-			on: ["_time", "_stop", "_start", "host"],
-		)
-		|> map(fn: (r) => ({{ r with _value_power: r._value_current * r._value_voltage }}))
-		|> map(fn: (r) => ({{ _time: r._time, "1": r._value_power, "2": r._value_current, "3": r._value_voltage}}))
-		|> rename(columns: {{ "1": "_value", "2": "Current (A)", "3": "Voltage (V)"}})
-		|> truncateTimeColumn(unit: 1h)
-		|> aggregateWindow(every: 1h, fn: mean, createEmpty: false, timeSrc: "_start")
+		|> filter(fn: (r) => r["topic"] == "WEATHER_TEST/SENSOR")
+		|> filter(fn: (r) => r["_field"] == "Rainfall")
+		|> drop(columns: ["host"])
+		|> truncateTimeColumn(unit: 1d)
 		|> aggregateWindow(every: 1d, fn: sum, createEmpty: false, timeSrc: "_start")
 		|> yield(name: "sum")
 		"""
@@ -118,15 +103,14 @@ class EnergyBackend:
 			period_start_times = [x.values.get("_time") for x in tables[0]]
 
 			for rainfall, day in zip(all_values, period_start_times):
-				consumption_data.append({"date": day.date(), "consumption": rainfall})
+				if rainfall > 0.28:  # Occasionally, especially if there's a gust, the bucket can tip even if it isn't raining.
+					rainfall_data.append({"date": day.date(), "rainfall_mm": rainfall})
 
 		output_data = []
 		save_data = []
-		for daily_data in consumption_data:
-			if daily_data["consumption"] is None:
-				continue
-			prepared_data = {"date": daily_data["date"].isoformat(), "consumption": daily_data["consumption"]}
-			# prepared_data = {"date": daily_data["date"], "consumption": daily_data["consumption"]}
+		for daily_data in rainfall_data:
+			prepared_data = {"date": daily_data["date"].isoformat(), "rainfall_mm": daily_data["rainfall_mm"]}
+			# prepared_data = {"date": daily_data["date"], "rainfall_mm": daily_data["rainfall_mm"]}
 			output_data.append(prepared_data)
 			if daily_data["date"] != today:
 				save_data.append(prepared_data)
@@ -137,49 +121,91 @@ class EnergyBackend:
 	def get_data(self) -> Dict:  # TODO: KT,VT
 
 		json_datafile = PathPlus(self.cache_data_file)
-		energy_data = json_datafile.load_json()  # List
-		for day in energy_data:
+		rainfall_data = json_datafile.load_json()  # List
+		for day in rainfall_data:
 			day["date"] = date.fromisoformat(day["date"])
 
-		return energy_data
+		return rainfall_data
 
 	def get_daily_endpoint_data(self) -> List:  # TODO: KT
 		output_data = []
 		for daily_data in self.get_data():
-			prepared_data = {"date": daily_data["date"], "consumption": daily_data["consumption"]}
+			prepared_data = {"date": daily_data["date"], "rainfall_mm": daily_data["rainfall_mm"]}
 			output_data.append(prepared_data)
 
 		return list(reversed(output_data))
 
-	def get_monthly_endpoint_data(self) -> List:  # TODO: KT
-		monthly_energy = {}
+	def get_monthly_endpoint_data(self) -> Dict:  # TODO: KT,VT
+		monthly_rainfall = {}
+
 		today = date.today()
 
+
 		for (year, month), daily_data in itertools.groupby(self.get_data(), lambda x: (x["date"].year, x["date"].month)):
-			daily_energy_list = list(map(operator.itemgetter("consumption"), daily_data))
+			daily_rainfall_list = list(map(operator.itemgetter("rainfall_mm"), daily_data))
 			days_in_month = monthrange(year, month)[1]
 
-			if month == today.month:
+			if month == today.month and year == today.year:
 				days_in_month = today.day
 
-			average_energy = sum(daily_energy_list) / days_in_month
-			# print(year, month, average_energy)
+			average_rainfall = sum(daily_rainfall_list) / days_in_month
+			# print(year, month, average_rainfall)
 
-			monthly_energy[f" {month:02d}/{year}"] = {
-					"total": sum(daily_energy_list),
-					"average": average_energy,
+			monthly_rainfall[f" {month:02d}/{year}"] = {
+					"total": sum(daily_rainfall_list),
+					"days": len(daily_rainfall_list),
+					"average": average_rainfall,
 					"complete_month": month != today.month or year != today.year,
 					}
 
-		current_month_key = f" {today.month:02d}/{today.year}"
-		if current_month_key in monthly_energy:
-			monthly_energy["current"] = monthly_energy[current_month_key]
+			current_month_key = f" {today.month:02d}/{today.year}"
+			if current_month_key in monthly_rainfall:
+				monthly_rainfall["current"] = monthly_rainfall[current_month_key]
+			else:
+				# No rain this month!
+				monthly_rainfall["current"] = {
+						"total": 0,
+						"days": 0,
+						"average": 0,
+						"complete_month": False,
+						}
+
+			return monthly_rainfall
+
+	def get_yearly_endpoint_data(self) -> Dict:  # TODO: KT,VT
+		monthly_rainfall = self.get_monthly_endpoint_data()
+		yearly_rainfall = {}
+
+		today = date.today()
+
+		for month, month_data in monthly_rainfall.items():
+			if month == "current":
+				continue  # TODO
+
+			year = month.split('/')[1]
+
+			if year not in yearly_rainfall:
+				yearly_rainfall[year] = {
+						"total": 0,
+						"days": 0,
+						"average": 0,
+						"complete_year": year != str(today.year),
+						}
+			yearly_rainfall[year]["total"] += month_data["total"]
+			yearly_rainfall[year]["days"] += month_data["days"]
+			# yearly_rainfall[year]["average"] += month_data["average"]
+			yearly_rainfall[year]["average"] = yearly_rainfall[year]["total"] / yearly_rainfall[year]["days"]
+
+		current_year_key = str(today.year)
+		if current_year_key in yearly_rainfall:
+			yearly_rainfall["current"] = yearly_rainfall[current_year_key]
 		else:
-			# No rain this month!
-			monthly_energy["current"] = {
+			# No rain this year!
+			yearly_rainfall["current"] = {
 					"total": 0,
+					"days": 0,
 					"average": 0,
-					"complete_month": False,
+					"complete_year": False,
 					}
 
-		return monthly_energy
+		return dict(yearly_rainfall)
