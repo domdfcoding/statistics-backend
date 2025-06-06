@@ -1,0 +1,29 @@
+# Configuration for 'repo_helper' (https://github.com/repo-helper/repo_helper)
+---
+modname: 'statistics-backend'
+copyright_years: '2023'
+author: 'Dominic Davis-Foster'
+email: 'dominic@davis-foster.co.uk'
+username: 'domdfcoding'
+version: '0.0.0'
+license: 'MIT'
+short_desc: 'Utilities for retreiving data from InfluxDB for presentation to Grafana.'
+
+enable_conda: false
+enable_docs: false
+enable_tests: false
+on_pypi: false
+use_whey: true
+
+python_versions:
+ - 3.8
+ - 3.9
+ - "3.10"
+ - "3.11"
+
+# additional_ignore:
+#  - "config.toml"
+#  - old.py
+#  - car_charging.csv
+#  - car_charging.json
+#  - car.py
