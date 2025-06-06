@@ -40,6 +40,12 @@ warn_unused_ignores = true
 no_implicit_optional = true
 show_error_codes = true
 
+[[tool.mypy.overrides]]
+module = "astral"
+follow_imports = "skip"
+follow_imports_for_stubs = true
+ignore_errors = true
+
 [tool.dependency-dash."requirements.txt"]
 order = 10
 
