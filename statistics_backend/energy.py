@@ -67,7 +67,7 @@ class EnergyBackend(Backend):
 				token,
 				output_data_file=output_data_file,
 				cache_data_file=cache_data_file,
-				influxdb_address=influxdb_address
+				influxdb_address=influxdb_address,
 				)
 		self.voltage_source = voltage_source
 
