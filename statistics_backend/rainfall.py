@@ -65,7 +65,7 @@ class RainfallBackend(Backend):
 				token,
 				output_data_file=output_data_file,
 				cache_data_file=cache_data_file,
-				influxdb_address=influxdb_address
+				influxdb_address=influxdb_address,
 				)
 
 	def update_data(self) -> None:
